@@ -106,10 +106,10 @@ public:
 
 struct TopicContainer
 {
-    std::string topicName;
-    std::pair<std::string, std::string> msgType;// Format: <"interfaceName", "msgType">.
+    TopicInfo info;
     bool occupyF;
     std::shared_ptr<BaseSubNode> node;
+    std::pair<std::shared_ptr<BaseSubNodeMsg>, int64_t> msgBuf = { nullptr, -1 };// Store latest msg
 };
 
 typedef std::map<std::string, TopicContainer> TopicContainerPack;// Format: {"topicName" : TopicContainer, ...}.
@@ -117,7 +117,7 @@ typedef std::map<std::string, TopicContainer> TopicContainerPack;// Format: {"to
 struct Recorder
 {
     std::deque<std::shared_ptr<BaseSubNodeMsg> > msgQue;// Record sampling data for all topics.
-    std::map<std::string, std::map<std::string, int64_t>> recordMap;// Sampling timestamp and index pair corresponds to msgQue. Format: {"sampTs" : {"topicName" : idx, ...}, ...}.
+    std::map<std::string, std::map<std::string, int64_t> > recordMap;// Sampling timestamp and index pair corresponds to msgQue. Format: {"sampTs" : {"topicName" : idx, ...}, ...}.
 };
 
 class RecordNode : public vehicle_interfaces::VehicleServiceNode
@@ -136,7 +136,7 @@ private:
     Recorder recorderBk_;
     Recorder* recorderPtr_;
     Recorder* dumpPtr_;
-    std::mutex recorderPtrLock_;// Prevent recorderPtrLock_ races.
+    std::mutex recorderPtrLock_;// Prevent recorderPtr_ races.
     std::mutex dumpJSONLock_;// Protect dumpJSON() frequently called.
     
     SaveQueue<cv::Mat>* globalImgQue_;
@@ -262,12 +262,16 @@ private:
             if (this->topicContainerPack_.find(topicName) == this->topicContainerPack_.end())// New topic.
             {
                 TopicContainer container;
-                container.topicName = topicName;
-                container.msgType = { msgTypeSplit[0], msgTypeSplit[2] };
+                TopicInfo info;
+                info.topicName = topicName;
+                info.interface.packName = msgTypeSplit[0];
+                info.interface.type = ROS2InterfaceType::MSG;
+                info.interface.msgType = msgTypeSplit[2];
+                container.info = info;
                 container.occupyF = false;
                 container.node = nullptr;
                 this->topicContainerPack_[topicName] = container;
-                RCLCPP_INFO(this->get_logger(), "[Scan] New topic [%s]: <%s, %s>", topicName.c_str(), container.msgType.second.c_str(), container.occupyF ? "true" : "false");
+                RCLCPP_INFO(this->get_logger(), "[Scan] New topic [%s]: <%s, %s>", topicName.c_str(), container.info.interface.msgType.c_str(), container.occupyF ? "true" : "false");
             }
             topicContainerLocker.unlock();
         }
@@ -281,28 +285,30 @@ private:
                 std::string subNodeName = splitTopicName.back() + "_subnode";
                 vehicle_interfaces::replace_all(subNodeName, "/", "_");
 
-                if (container.msgType.second == "Distance")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::Distance, vehicle_interfaces::msg::Distance> >(subNodeName, topicName, params_->qosService, params_->qosDirPath);
-                else if (container.msgType.second == "Environment")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::Environment, vehicle_interfaces::msg::Environment> >(subNodeName, topicName, params_->qosService, params_->qosDirPath);
-                else if (container.msgType.second == "GPS")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::GPS, vehicle_interfaces::msg::GPS> >(subNodeName, topicName, params_->qosService, params_->qosDirPath);
-                else if (container.msgType.second == "Image")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::Image, ImageMsg> >(subNodeName, topicName, params_->qosService, params_->qosDirPath);
-                else if (container.msgType.second == "IMU")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::IMU, vehicle_interfaces::msg::IMU> >(subNodeName, topicName, params_->qosService, params_->qosDirPath);
-                else if (container.msgType.second == "MillitBrakeMotor")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MillitBrakeMotor, vehicle_interfaces::msg::MillitBrakeMotor> >(subNodeName, topicName, params_->qosService, params_->qosDirPath);
-                else if (container.msgType.second == "MillitPowerMotor")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MillitPowerMotor, vehicle_interfaces::msg::MillitPowerMotor> >(subNodeName, topicName, params_->qosService, params_->qosDirPath);
-                else if (container.msgType.second == "MotorAxle")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MotorAxle, vehicle_interfaces::msg::MotorAxle> >(subNodeName, topicName, params_->qosService, params_->qosDirPath);
-                else if (container.msgType.second == "MotorSteering")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MotorSteering, vehicle_interfaces::msg::MotorSteering> >(subNodeName, topicName, params_->qosService, params_->qosDirPath);
-                else if (container.msgType.second == "UPS")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::UPS, vehicle_interfaces::msg::UPS> >(subNodeName, topicName, params_->qosService, params_->qosDirPath);
-                else if (container.msgType.second == "WheelState")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::WheelState, vehicle_interfaces::msg::WheelState> >(subNodeName, topicName, params_->qosService, params_->qosDirPath);
+                if (container.info.interface.msgType == "Distance")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::Distance, vehicle_interfaces::msg::Distance> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                else if (container.info.interface.msgType == "Environment")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::Environment, vehicle_interfaces::msg::Environment> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                else if (container.info.interface.msgType == "GPS")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::GPS, vehicle_interfaces::msg::GPS> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                else if (container.info.interface.msgType == "IDTable")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::IDTable, vehicle_interfaces::msg::IDTable> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                else if (container.info.interface.msgType == "Image")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::Image, ImageMsg> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                else if (container.info.interface.msgType == "IMU")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::IMU, vehicle_interfaces::msg::IMU> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                else if (container.info.interface.msgType == "MillitBrakeMotor")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MillitBrakeMotor, vehicle_interfaces::msg::MillitBrakeMotor> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                else if (container.info.interface.msgType == "MillitPowerMotor")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MillitPowerMotor, vehicle_interfaces::msg::MillitPowerMotor> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                else if (container.info.interface.msgType == "MotorAxle")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MotorAxle, vehicle_interfaces::msg::MotorAxle> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                else if (container.info.interface.msgType == "MotorSteering")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MotorSteering, vehicle_interfaces::msg::MotorSteering> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                else if (container.info.interface.msgType == "UPS")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::UPS, vehicle_interfaces::msg::UPS> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                else if (container.info.interface.msgType == "WheelState")
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::WheelState, vehicle_interfaces::msg::WheelState> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
                 else
                     continue;
 
@@ -311,7 +317,7 @@ private:
                 this->execMap_[topicName]->add_node(container.node);
                 this->subThMap_[topicName] = std::thread(SpinSubNodeExecutor, this->execMap_[topicName], container.node, topicName);
                 
-                RCLCPP_INFO(this->get_logger(), "[Scan] Subscribed [%s][%s]", topicName.c_str(), container.msgType.second.c_str());
+                RCLCPP_INFO(this->get_logger(), "[Scan] Subscribed [%s][%s]", topicName.c_str(), container.info.interface.msgType.c_str());
                 container.occupyF = true;
             }
         }
@@ -320,12 +326,10 @@ private:
 
     void _samplingTimerCallback()
     {
-        std::unique_lock<std::mutex> topicContainerLocker(this->topicContainerPackLock_, std::defer_lock);
-        std::unique_lock<std::mutex> recorderPtrLocker(this->recorderPtrLock_, std::defer_lock);
+        std::lock_guard<std::mutex> topicContainerLocker(this->topicContainerPackLock_);
+        std::lock_guard<std::mutex> recorderPtrLocker(this->recorderPtrLock_);
 
-        topicContainerLocker.lock();
-        recorderPtrLocker.lock();// Set locker here to prevent ptr data race and topic seperation.
-        double sampleTimestamp = this->getTimestamp().seconds();
+        std::string sampTsStr = std::to_string(this->getTimestamp().seconds());
         for (auto& [topicName, container] : topicContainerPack_)
         {
             if (!container.occupyF || container.node == nullptr)
@@ -333,17 +337,60 @@ private:
             if (!container.node->isInit())
                 continue;
 
-            if (container.node->getData(this->recorderPtr_->msgQue))// Return true if new data arrived.
+            // Non-refined solution. (Copy all data whether new or repetitive)
+            bool newDataF = false;
+            if (container.node->getData(this->recorderPtr_->msgQue, newDataF, true))
             {
-                if (container.msgType.second == "Image")// TODO: add SaveQue for Image msg.
+                // Message data available
+                this->recorderPtr_->recordMap[sampTsStr][topicName] = this->recorderPtr_->msgQue.size() - 1;// recordMap add idx corresponds to msgQue.
+                container.msgBuf.first = this->recorderPtr_->msgQue.back();// Add tmp latest msg.
+                container.msgBuf.second = this->recorderPtr_->msgQue.size() - 1;// Add tmp idx.
+            }
+/*
+            if (this->recorderPtr_->msgQue.size() <= 0)// New msgQue or swapped.
+            {
+                bool newDataF = false;
+                if (container.node->getData(this->recorderPtr_->msgQue, newDataF, true))
                 {
-
+                    // Message data available
+                    this->recorderPtr_->recordMap[sampTsStr][topicName] = 0;// recordMap add idx corresponds to msgQue.
+                    container.msgBuf.first = this->recorderPtr_->msgQue.back();// Add tmp latest msg.
+                    container.msgBuf.second = 0;// Add tmp idx.
                 }
             }
-            this->recorderPtr_->recordMap[std::to_string(sampleTimestamp)][topicName] = this->recorderPtr_->msgQue.size() - 1;
+            else// Normal situation
+            {
+                bool newDataF = false;
+                if (container.node->getData(this->recorderPtr_->msgQue, newDataF, false))
+                {
+                    // Message data available
+                    if (newDataF)
+                    {
+                        // printf("%s new data\n", topicName.c_str());
+                        this->recorderPtr_->recordMap[sampTsStr][topicName] = this->recorderPtr_->msgQue.size() - 1;// recordMap add idx corresponds to msgQue.
+                        container.msgBuf.first = this->recorderPtr_->msgQue.back();// Add tmp latest msg.
+                        container.msgBuf.second = this->recorderPtr_->msgQue.size() - 1;// Add tmp idx.
+                    }
+                    else
+                    {
+                        // printf("%s count: %d\n", topicName.c_str(), container.msgBuf.first.use_count());
+                        if (container.msgBuf.first.use_count() < 2)// msgQue swapped. Copy tmp msg to current msgQue.
+                        {
+                            this->recorderPtr_->msgQue.push_back(container.msgBuf.first);
+                            this->recorderPtr_->recordMap[sampTsStr][topicName] = this->recorderPtr_->msgQue.size() - 1;// recordMap add idx corresponds to msgQue.
+                            container.msgBuf.second = this->recorderPtr_->msgQue.size() - 1;
+                            // printf("%s recovered.\n", topicName.c_str());
+                        }
+                        // else if (container.msgBuf.second >= 0)// msgQue not swap.
+                        // {
+                        //     this->recorderPtr_->recordMap[sampTsStr][topicName] = container.msgBuf.second;// recordMap add idx corresponds to msgQue.
+                        //     // printf("%s linked.\n", topicName.c_str());
+                        // }
+                    }
+                }
+            }
+*/
         }
-        recorderPtrLocker.unlock();
-        topicContainerLocker.unlock();
     }
 
     void _dumpTimerCallback()
@@ -434,7 +481,6 @@ public:
         // Swap ptr
         recorderPtrLocker.lock();
         std::swap(this->recorderPtr_, this->dumpPtr_);
-        RCLCPP_INFO(this->get_logger(), "[Dump] record: %p (size: %ld) dump: %p (size: %ld)", this->recorderPtr_, this->recorderPtr_->msgQue.size(), this->dumpPtr_, this->dumpPtr_->msgQue.size());
         recorderPtrLocker.unlock();
 
         // Dump SubNodeMsg to JSON file
@@ -446,14 +492,16 @@ public:
         for (const auto& [sampTs, topicIdxMap] : this->dumpPtr_->recordMap)
         {
             for (const auto& [topicName, idx] : topicIdxMap)
+            {
+                if (idx < 0)
+                    continue;
                 recordJSON[sampTs][topicName] = this->dumpPtr_->msgQue[idx]->dumpJSON();
+            }
+                
         }
         std::ofstream outFile(this->dumpDir_ / "json" / (std::to_string(dumpTs) + ".json"));
         outFile << recordJSON << std::endl;
 
-        // Clear deque of pointer in safe way.
-        // for (std::deque<BaseSubNodeMsg*>::const_iterator it = this->dumpPtr_->msgQue.begin(), endit = this->dumpPtr_->msgQue.end(); it != endit; ++it)
-        //     delete *it;
         this->dumpPtr_->msgQue.clear();
 
         // Clear recorder
@@ -473,7 +521,7 @@ public:
                 continue;
             if (!container.node->isInit())
                 continue;
-            ret[topicName] = container.msgType.second;
+            ret[topicName] = container.info.interface.msgType;
         }
         return ret;
     }
@@ -492,7 +540,7 @@ public:
             return a->getData(data);
         return false;
     }
-    
+
     bool enableData(const std::string& topicName, bool flag)
     {
         std::lock_guard<std::mutex> topicContainerLocker(this->topicContainerPackLock_);
@@ -502,7 +550,7 @@ public:
             return false;
         if (!this->topicContainerPack_[topicName].node->isInit())
             return false;
-        this->topicContainerPack_[topicName].node->show(flag);
+        this->topicContainerPack_[topicName].node->setStoreFlag(flag);
         return true;
     }
 
@@ -515,7 +563,7 @@ public:
             return false;
         if (!this->topicContainerPack_[topicName].node->isInit())
             return false;
-        return this->topicContainerPack_[topicName].node->isShow();
+        return this->topicContainerPack_[topicName].node->getStoreFlag();
     }
 
     void startRecord()
@@ -538,13 +586,13 @@ public:
             this->recordTimer_->stop();
         this->dumpJSON();// Dump rest of files in memory to storage.
     }
-    
+
     void close()
     {
         std::lock_guard<std::mutex> locker(this->timerLock_);
         if (this->exitF_)// Already closed
             return;
-        
+
         RCLCPP_WARN(this->get_logger(), "[RecordNode::close]");
 
         if (this->monitorTimer_ != nullptr)

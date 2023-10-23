@@ -1,3 +1,4 @@
+#pragma once
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -44,73 +45,37 @@
 // Image Process
 #include <opencv2/opencv.hpp>
 
+// Local header
+#include "msg.h"
+
 //#define NODE_SUBSCRIBE_PRINT
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
-nlohmann::json CvtVIHeaderToJSON(vehicle_interfaces::msg::Header header)
-{
-    nlohmann::json ret;
-    ret["priority"] = header.priority;
-    ret["device_type"] = header.device_type;
-    ret["device_id"] = header.device_id;
-    ret["frame_id"] = header.frame_id;
-    ret["stamp_type"] = header.stamp_type;
-    ret["stamp"] = header.stamp.sec + (double)(header.stamp.nanosec / 1000000000.0);
-    ret["stamp_offset"] = header.stamp_offset;
-    ret["ref_publish_time_ms"] = header.ref_publish_time_ms;
-    return ret;
-}
+enum ROS2InterfaceType { MSG, SRV };
 
-void CvtVIHeaderToJSON(vehicle_interfaces::msg::Header header, nlohmann::json& json)
-{
-    json["priority"] = header.priority;
-    json["device_type"] = header.device_type;
-    json["device_id"] = header.device_id;
-    json["frame_id"] = header.frame_id;
-    json["stamp_type"] = header.stamp_type;
-    json["stamp"] = header.stamp.sec + (double)(header.stamp.nanosec / 1000000000.0);
-    json["stamp_offset"] = header.stamp_offset;
-    json["ref_publish_time_ms"] = header.ref_publish_time_ms;
-}
-
-/**
- * Customized Record Messages
- */
-
-class ImageMsg
+class ROS2InterfaceInfo
 {
 public:
-    vehicle_interfaces::msg::Header header;
-    uint8_t format_type;
-    int16_t cvmat_type;
-    uint8_t depth_unit_type;
-    uint16_t width;
-    uint16_t height;
+    std::string packName;
+    ROS2InterfaceType type;
+    std::string msgType;
 
-    std::string fileName;
-    cv::Mat mat = cv::Mat(100, 100, CV_8UC3, cv::Scalar(50));
-
-    ImageMsg& operator=(const ImageMsg& src)
+    ROS2InterfaceInfo& operator=(const ROS2InterfaceInfo& src)
     {
-        this->header = src.header;
-        this->format_type = src.format_type;
-        this->cvmat_type = src.cvmat_type;
-        this->depth_unit_type = src.depth_unit_type;
-        this->width = src.width;
-        this->height = src.height;
-        this->fileName = src.fileName;
-        try
-        {
-            this->mat = src.mat.clone();
-        }
-        catch (...)
-        {
-            this->mat = cv::Mat(100, 100, CV_8UC3, cv::Scalar(50));
-        }
+        this->packName = src.packName;
+        this->type = src.type;
+        this->msgType = src.msgType;
         return *this;
     }
+};
+
+class TopicInfo
+{
+public:
+    std::string topicName;
+    ROS2InterfaceInfo interface; 
 };
 
 template<typename T>
@@ -261,174 +226,7 @@ void SaveQueue<cv::Mat>::_saveTh(size_t queID)// cv::Mat specified TODO: to be v
 }
 
 
-/**
- * BaseSubNodeMsg and SubNodeMsg Template Implementation
- */
 
-class BaseSubNodeMsg
-{
-public:
-    uint8_t record_stamp_type;
-    double record_stamp;
-    int64_t record_stamp_offset;
-    uint64_t record_frame_id;
-
-    virtual nlohmann::json dumpJSON()
-    {
-        nlohmann::json ret;
-        ret["record_stamp_type"] = record_stamp_type;
-        ret["record_stamp"] = record_stamp;
-        ret["record_stamp_offset"] = record_stamp_offset;
-        ret["record_frame_id"] = record_frame_id;
-        return ret;
-    }
-};
-
-template<typename T>
-class SubNodeMsg : public BaseSubNodeMsg
-{
-public:
-    T msg;
-
-private:
-    void _dumpJSON(nlohmann::json& json) {}
-
-public:
-    nlohmann::json dumpJSON() override
-    {
-        auto ret = BaseSubNodeMsg::dumpJSON();
-        this->_dumpJSON(ret);
-        return ret;
-    }
-};
-
-template<>
-void SubNodeMsg<vehicle_interfaces::msg::Distance>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["unit_type"] = this->msg.unit_type;
-    json["min"] = this->msg.min;
-    json["max"] = this->msg.max;
-    json["distance"] = this->msg.distance;
-}
-
-template<>
-void SubNodeMsg<vehicle_interfaces::msg::Environment>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["unit_type"] = this->msg.unit_type;
-    json["temperature"] = this->msg.temperature;
-    json["relative_humidity"] = this->msg.relative_humidity;
-    json["pressure"] = this->msg.pressure;
-}
-
-template<>
-void SubNodeMsg<vehicle_interfaces::msg::GPS>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["gps_status"] = this->msg.gps_status;
-    json["latitude"] = this->msg.latitude;
-    json["longitude"] = this->msg.longitude;
-    json["altitude"] = this->msg.altitude;
-}
-
-template<>
-void SubNodeMsg<vehicle_interfaces::msg::IDTable>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["idtable"] = this->msg.idtable;
-}
-
-template<>
-void SubNodeMsg<ImageMsg>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["format_type"] = this->msg.format_type;
-    json["cvmat_type"] = this->msg.cvmat_type;
-    json["depth_unit_type"] = this->msg.depth_unit_type;
-    json["width"] = this->msg.width;
-    json["height"] = this->msg.height;
-    json["fileName"] = this->msg.fileName;
-}
-
-template<>
-void SubNodeMsg<vehicle_interfaces::msg::IMU>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["unit_type"] = this->msg.unit_type;
-    json["orientation"] = this->msg.orientation;
-    json["angular_velocity"] = this->msg.angular_velocity;
-    json["linear_acceleration"] = this->msg.linear_acceleration;
-}
-
-template<>
-void SubNodeMsg<vehicle_interfaces::msg::MillitBrakeMotor>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["travel_min"] = this->msg.travel_min;
-    json["travel_max"] = this->msg.travel_max;
-    json["travel"] = this->msg.travel;
-    json["brake_percentage"] = this->msg.brake_percentage;
-    json["external_control"] = this->msg.external_control;
-}
-
-template<>
-void SubNodeMsg<vehicle_interfaces::msg::MillitPowerMotor>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["motor_mode"] = this->msg.motor_mode;
-    json["rpm"] = this->msg.rpm;
-    json["torque"] = this->msg.torque;
-    json["percentage"] = this->msg.percentage;
-    json["voltage"] = this->msg.voltage;
-    json["current"] = this->msg.current;
-    json["temperature"] = this->msg.temperature;
-    json["parking"] = this->msg.parking;
-}
-
-template<>
-void SubNodeMsg<vehicle_interfaces::msg::MotorAxle>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["dir"] = this->msg.dir;
-    json["pwm"] = this->msg.pwm;
-    json["parking"] = this->msg.parking;
-}
-
-template<>
-void SubNodeMsg<vehicle_interfaces::msg::MotorSteering>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["unit_type"] = this->msg.unit_type;
-    json["min"] = this->msg.min;
-    json["max"] = this->msg.max;
-    json["center"] = this->msg.center;
-    json["value"] = this->msg.value;
-}
-
-template<>
-void SubNodeMsg<vehicle_interfaces::msg::UPS>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["volt_in"] = this->msg.volt_in;
-    json["amp_in"] = this->msg.amp_in;
-    json["volt_out"] = this->msg.volt_out;
-    json["amp_out"] = this->msg.amp_out;
-    json["temperature"] = this->msg.temperature;
-}
-
-template<>
-void SubNodeMsg<vehicle_interfaces::msg::WheelState>::_dumpJSON(nlohmann::json& json)
-{
-    CvtVIHeaderToJSON(this->msg.header, json);
-    json["gear"] = this->msg.gear;
-    json["steering"] = this->msg.steering;
-    json["pedal_throttle"] = this->msg.pedal_throttle;
-    json["pedal_brake"] = this->msg.pedal_brake;
-    json["pedal_clutch"] = this->msg.pedal_clutch;
-    json["button"] = this->msg.button;
-    json["func"] = this->msg.func;
-}
 
 
 /**
@@ -439,7 +237,7 @@ class BaseSubNode : public vehicle_interfaces::PseudoTimeSyncNode, public vehicl
 {
 private:
     bool initF_;
-    bool showF_;
+    bool storeF_;
 
 public:
     BaseSubNode(std::string nodeName, std::string qosServiceName, std::string qosDirPath) : 
@@ -447,7 +245,7 @@ public:
         vehicle_interfaces::QoSUpdateNode(nodeName, qosServiceName, qosDirPath), 
         rclcpp::Node(nodeName), 
         initF_(false), 
-        showF_(true)
+        storeF_(true)
     {
 
     }
@@ -456,13 +254,13 @@ public:
     
     bool isInit() const { return this->initF_; }
 
-    void show(bool flag) { this->showF_ = flag; }
+    void setStoreFlag(bool flag) { this->storeF_ = flag; }
 
-    bool isShow() const { return this->showF_; }
+    bool getStoreFlag() const { return this->storeF_; }
 
-    virtual bool getData(BaseSubNodeMsg* msg) { return false; }
+    virtual bool dataAvailable() { return false; }
 
-    virtual bool getData(std::deque<std::shared_ptr<BaseSubNodeMsg> >& msgQue) { return false; }
+    virtual bool getData(std::deque<std::shared_ptr<BaseSubNodeMsg> >& msgQue, bool& newData, bool force) { return false; }
 };
 
 template<typename T, typename U>
@@ -470,7 +268,7 @@ class SubNode : public BaseSubNode
 {
 private:
     std::string nodeName_;
-    std::string topicName_;
+    TopicInfo topicInfo_;
     std::shared_ptr<rclcpp::Subscription<T> > subscription_;
     std::mutex nodeLock_;
 
@@ -482,6 +280,7 @@ private:
     SubNodeMsg<U>* dataGetPtr_;
     std::atomic<bool> newDataF_;
     std::mutex dataPtrLock_;
+    std::atomic<bool> dataAvailableF_;
 
 private:
     void _qosCallback(std::map<std::string, rclcpp::QoS*> qmap)
@@ -489,7 +288,7 @@ private:
         std::unique_lock<std::mutex> nodeLocker(this->nodeLock_, std::defer_lock);
 
         nodeLocker.lock();
-        auto topicName = this->topicName_;
+        auto topicName = this->topicInfo_.topicName;
         nodeLocker.unlock();
 
         for (const auto& [k, v] : qmap)
@@ -507,19 +306,24 @@ private:
 
     void _topicCallback(const std::shared_ptr<T> msg)
     {
-        if (!this->isShow())
+        if (!this->getStoreFlag())
             return;
 
-        this->dataFilledPtr_->record_stamp_type = this->getTimestampType();
-        this->dataFilledPtr_->record_stamp = this->getTimestamp().seconds();
-        this->dataFilledPtr_->record_stamp_offset = static_cast<int64_t>(this->getCorrectDuration().nanoseconds());
-        this->dataFilledPtr_->record_frame_id = this->subFrameID_++;
+        RecordMsg recordMsg;
+        recordMsg.record_stamp_type = this->getTimestampType();
+        recordMsg.record_stamp = this->getTimestamp().seconds();
+        recordMsg.record_stamp_offset = static_cast<int64_t>(this->getCorrectDuration().nanoseconds());
+        recordMsg.record_frame_id = this->subFrameID_++;
+        this->dataFilledPtr_->setRecordMsg(recordMsg);
 
         this->_msgProc(msg, this->dataFilledPtr_);
 
         std::lock_guard<std::mutex> locker(this->dataPtrLock_);
         std::swap(this->dataFilledPtr_, this->dataGetPtr_);
         this->newDataF_ = true;
+
+        if (!this->dataAvailableF_)
+            this->dataAvailableF_ = true;
     }
 
     virtual void _msgProc(const std::shared_ptr<T> msg, SubNodeMsg<U>* ptr)
@@ -528,63 +332,87 @@ private:
     }
 
 public:
-    SubNode<T, U>(std::string nodeName, std::string topicName,std::string qosServiceName, std::string qosDirPath) : 
+    SubNode<T, U>(std::string nodeName, TopicInfo topicInfo, std::string qosServiceName, std::string qosDirPath) : 
         BaseSubNode(nodeName, qosServiceName, qosDirPath), 
         rclcpp::Node(nodeName)
     {
         this->nodeName_ = nodeName;
-        this->topicName_ = topicName;
+        this->topicInfo_ = topicInfo;
         this->dataFilledPtr_ = &this->data_;
         this->dataGetPtr_ = &this->dataBk_;
 
         this->subFrameID_ = 0;
 
         this->addQoSCallbackFunc(std::bind(&SubNode::_qosCallback, this, std::placeholders::_1));
-        vehicle_interfaces::QoSPair qpair = this->addQoSTracking(topicName);
-        this->subscription_ = this->create_subscription<T>(topicName, 
+        vehicle_interfaces::QoSPair qpair = this->addQoSTracking(this->topicInfo_.topicName);
+        this->subscription_ = this->create_subscription<T>(this->topicInfo_.topicName, 
             *qpair.second, std::bind(&SubNode::_topicCallback, this, std::placeholders::_1));
     }
+
+    bool dataAvailable() { return this->dataAvailableF_; }
     
-    // Get latest subscribed topic data. Function return true if new data arrived and update argument, otherwise return false and do nothing.
-    bool getData(SubNodeMsg<U>& data)
+    // Return false if msg data not available. msgQue will not be pushed if msg data not available.
+    // msgQue pushed if newData arrived or force flag set to true.
+    virtual bool getData(std::deque<std::shared_ptr<BaseSubNodeMsg> >& msgQue, bool& newData, bool force) override
     {
-        if (!this->newDataF_)
-            return false;
-        this->newDataF_ = false;
-
         std::lock_guard<std::mutex> locker(this->dataPtrLock_);
-        data = *this->dataGetPtr_;
-        this->subFrameID_ = 0;
-        return true;
-    }
 
-    bool getData(BaseSubNodeMsg* data)
-    {
-        if (!this->newDataF_)
-            return false;
+        bool ret = this->newDataF_;
+        newData = this->newDataF_;
+
         this->newDataF_ = false;
-
-        std::lock_guard<std::mutex> locker(this->dataPtrLock_);
-        data = new SubNodeMsg<U>(*this->dataGetPtr_);
         this->subFrameID_ = 0;
-        return true;
-    }
 
-    bool getData(std::deque<std::shared_ptr<BaseSubNodeMsg> >& msgQue)
-    {
-        if (!this->newDataF_)
+        if (!this->dataAvailableF_)
             return false;
-        this->newDataF_ = false;
+        if (!ret && !force)
+            return true;
 
-        std::unique_lock<std::mutex> locker(this->dataPtrLock_, std::defer_lock);
-        locker.lock();
-        // msgQue.push_back(new SubNodeMsg<U>(*this->dataGetPtr_));
         msgQue.push_back(std::make_shared<SubNodeMsg<U> >(*this->dataGetPtr_));
-        locker.unlock();
-        this->subFrameID_ = 0;
+
+        if (ret && this->topicInfo_.interface.msgType == "Image")// Tmp solution for Image msg
+        {
+            if (SubNodeMsg<ImageMsg>* imgMsg = dynamic_cast<SubNodeMsg<ImageMsg>*>(this->dataGetPtr_))
+            {
+                imgMsg->msg.mat = cv::Mat::zeros(imgMsg->msg.mat.size(), imgMsg->msg.mat.type());
+            }
+        }
         return true;
     }
+};
 
+template<typename T, typename U, typename V>
+class SubSaveQueueNode : public SubNode<T, U>
+{
+private:
+    SaveQueue<T>* saveImgQue_;
+
+public:
+    SubSaveQueueNode<T, U, V>(std::string nodeName, TopicInfo topicInfo, SaveQueue<V>* saveQue, std::string qosServiceName, std::string qosDirPath) : 
+        SubNode<T, U>(nodeName, topicInfo, qosServiceName, qosDirPath), 
+        rclcpp::Node(nodeName)
+    {
+        this->saveImgQue_ = saveQue;
+    }
+
+    bool getData(std::deque<std::shared_ptr<BaseSubNodeMsg> >& msgQue, bool& newData, bool force) override
+    {
+        std::lock_guard<std::mutex> locker(this->dataPtrLock_);
+
+        bool ret = this->newDataF_;
+        newData = this->newDataF_;
+
+        this->newDataF_ = false;
+        this->subFrameID_ = 0;
+
+        if (!this->dataAvailableF_)
+            return false;
+        if (!ret && !force)
+            return true;
+
+        msgQue.push_back(std::make_shared<SubNodeMsg<U> >(*this->dataGetPtr_));
+        return true;
+    }
 };
 
 template<>
@@ -633,21 +461,23 @@ void SubNode<vehicle_interfaces::msg::Image, ImageMsg>::_msgProc(const std::shar
     auto nodeName = this->nodeName_;
     nodeLocker.unlock();
 
-    std::string fileName;
+    std::string record_filename;
     auto ts = static_cast<rclcpp::Time>(msg->header.stamp).seconds();
     if (msg->format_type == vehicle_interfaces::msg::Image::FORMAT_JPEG)
-        fileName = nodeName + "/" + std::to_string(ts) + ".jpg";
+        record_filename = nodeName + "/" + std::to_string(ts) + ".jpg";
     else if (msg->format_type == vehicle_interfaces::msg::Image::FORMAT_RAW)
-        fileName = nodeName + "/" + std::to_string(ts) + ".tiff";
+        record_filename = nodeName + "/" + std::to_string(ts) + ".tiff";
 
-    ptr->msg.header = msg->header;
-    ptr->msg.format_type = msg->format_type;
-    ptr->msg.cvmat_type = msg->cvmat_type;
-    ptr->msg.depth_unit_type = msg->depth_unit_type;
-    ptr->msg.width = msg->width;
-    ptr->msg.height = msg->height;
-    ptr->msg.fileName = fileName;
-    ptr->msg.mat = recvMat.clone();
+    ImageMsg imgMsg;
+    imgMsg.header = msg->header;
+    imgMsg.format_type = msg->format_type;
+    imgMsg.cvmat_type = msg->cvmat_type;
+    imgMsg.depth_unit_type = msg->depth_unit_type;
+    imgMsg.width = msg->width;
+    imgMsg.height = msg->height;
+    imgMsg.record_filename = record_filename;
+    imgMsg.mat = recvMat.clone();
+    ptr->msg = imgMsg;
 }
 
 template<>
