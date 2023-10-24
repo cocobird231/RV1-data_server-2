@@ -139,7 +139,7 @@ private:
     std::mutex recorderPtrLock_;// Prevent recorderPtr_ races.
     std::mutex dumpJSONLock_;// Protect dumpJSON() frequently called.
     
-    SaveQueue<cv::Mat>* globalImgQue_;
+    SaveQueue<ImageMsg>* globalImgQue_;
 
     // Store ROS2 topic inforamtions
     TopicContainerPack topicContainerPack_;// Store topic name and message type.
@@ -286,31 +286,34 @@ private:
                 vehicle_interfaces::replace_all(subNodeName, "/", "_");
 
                 if (container.info.interface.msgType == "Distance")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::Distance, vehicle_interfaces::msg::Distance> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::Distance, vehicle_interfaces::msg::Distance> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else if (container.info.interface.msgType == "Environment")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::Environment, vehicle_interfaces::msg::Environment> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::Environment, vehicle_interfaces::msg::Environment> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else if (container.info.interface.msgType == "GPS")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::GPS, vehicle_interfaces::msg::GPS> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::GPS, vehicle_interfaces::msg::GPS> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else if (container.info.interface.msgType == "IDTable")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::IDTable, vehicle_interfaces::msg::IDTable> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::IDTable, vehicle_interfaces::msg::IDTable> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else if (container.info.interface.msgType == "Image")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::Image, ImageMsg> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubSaveQueueNode<vehicle_interfaces::msg::Image, ImageMsg> >(subNodeName, container.info, this->globalImgQue_, this->dumpDir_, this->params_->qosService, this->params_->qosDirPath);
                 else if (container.info.interface.msgType == "IMU")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::IMU, vehicle_interfaces::msg::IMU> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::IMU, vehicle_interfaces::msg::IMU> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else if (container.info.interface.msgType == "MillitBrakeMotor")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MillitBrakeMotor, vehicle_interfaces::msg::MillitBrakeMotor> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MillitBrakeMotor, vehicle_interfaces::msg::MillitBrakeMotor> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else if (container.info.interface.msgType == "MillitPowerMotor")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MillitPowerMotor, vehicle_interfaces::msg::MillitPowerMotor> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MillitPowerMotor, vehicle_interfaces::msg::MillitPowerMotor> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else if (container.info.interface.msgType == "MotorAxle")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MotorAxle, vehicle_interfaces::msg::MotorAxle> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MotorAxle, vehicle_interfaces::msg::MotorAxle> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else if (container.info.interface.msgType == "MotorSteering")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MotorSteering, vehicle_interfaces::msg::MotorSteering> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::MotorSteering, vehicle_interfaces::msg::MotorSteering> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else if (container.info.interface.msgType == "UPS")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::UPS, vehicle_interfaces::msg::UPS> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::UPS, vehicle_interfaces::msg::UPS> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else if (container.info.interface.msgType == "WheelState")
-                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::WheelState, vehicle_interfaces::msg::WheelState> >(subNodeName, container.info, params_->qosService, params_->qosDirPath);
+                    container.node = std::make_shared<SubNode<vehicle_interfaces::msg::WheelState, vehicle_interfaces::msg::WheelState> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else
                     continue;
+                
+                if (!this->params_->enable_control)
+                    container.node->setStoreFlag(true);
 
                 container.node->syncTime(this->getCorrectDuration(), this->getTimestampType());// TODO: Add TimeSyncNode syncCallback()
                 this->execMap_[topicName] = new rclcpp::executors::SingleThreadedExecutor();
@@ -396,6 +399,12 @@ private:
     void _dumpTimerCallback()
     {
         this->dumpJSON();
+        std::string outStr = "Global image queue size: <";
+        for (const auto& i : this->globalImgQue_->getSize())
+            outStr = outStr + std::to_string(i) + ",";
+        outStr.back() = '>';
+        RCLCPP_INFO(this->get_logger(), "[Dump] %s", outStr.c_str());
+        this->globalImgQue_->shrink_to_fit();
     }
 
     void _recordTimerCallback()
@@ -423,6 +432,7 @@ public:
         // Init recorder
         this->recorderPtr_ = &this->recorder_;
         this->dumpPtr_ = &this->recorderBk_;
+        this->globalImgQue_ = new SaveQueue<ImageMsg>(params->img_threads, 100);
 
         // Add to set for filter element check.
         for (const auto& msgType : params->msg_filter)
@@ -475,6 +485,7 @@ public:
 
     void dumpJSON()
     {
+        RCLCPP_INFO(this->get_logger(), "[Dump] Dumping json from buffer...");
         std::lock_guard<std::mutex> dumpLocker(this->dumpJSONLock_);
         std::unique_lock<std::mutex> recorderPtrLocker(this->recorderPtrLock_, std::defer_lock);
 
@@ -487,7 +498,6 @@ public:
         double dumpTs = this->get_clock()->now().seconds();
         nlohmann::json recordJSON;
 
-        RCLCPP_INFO(this->get_logger(), "[Dump] Dumping json from buffer...");
         auto st = std::chrono::steady_clock::now();// Calculate dumping spend time.
         for (const auto& [sampTs, topicIdxMap] : this->dumpPtr_->recordMap)
         {
@@ -568,8 +578,15 @@ public:
 
     void startRecord()
     {
-        std::lock_guard<std::mutex> locker(this->timerLock_);
         RCLCPP_WARN(this->get_logger(), "[RecordNode::startRecord]");
+        std::unique_lock<std::mutex> topicContainerLocker(this->topicContainerPackLock_, std::defer_lock);
+        std::lock_guard<std::mutex> locker(this->timerLock_);
+
+        topicContainerLocker.lock();
+        for (auto& [topicName, container] : this->topicContainerPack_)
+            container.node->setStoreFlag(true);
+        topicContainerLocker.unlock();
+
         this->sampleTimer_->start();
         this->dumpTimer_->start();
         if (this->recordTimer_ != nullptr)
@@ -578,8 +595,17 @@ public:
 
     void stopRecord()
     {
-        std::lock_guard<std::mutex> locker(this->timerLock_);
         RCLCPP_WARN(this->get_logger(), "[RecordNode::stopRecord]");
+        std::unique_lock<std::mutex> topicContainerLocker(this->topicContainerPackLock_, std::defer_lock);
+        std::lock_guard<std::mutex> locker(this->timerLock_);
+
+        topicContainerLocker.lock();
+        for (auto& [topicName, container] : this->topicContainerPack_)
+            container.node->setStoreFlag(false);
+        topicContainerLocker.unlock();
+
+        RCLCPP_WARN(this->get_logger(), "[RecordNode::stopRecord] setStoreFlag(false)");
+
         this->sampleTimer_->stop();
         this->dumpTimer_->stop();
         if (this->recordTimer_ != nullptr)
@@ -654,10 +680,10 @@ int main(int argc, char** argv)
     executor->add_node(recordNode);
     std::thread recordNodeTh(SpinExecutor, executor, "recordNodeTh");
 
-    RCLCPP_INFO(rclcpp::get_logger("Main"), "Shutdown recordNodeTh...");
     executor->cancel();
     recordNodeTh.join();
     recordNode->close();
+    delete executor;
     RCLCPP_INFO(rclcpp::get_logger("Main"), "Done.");
     rclcpp::shutdown();
     return 0;

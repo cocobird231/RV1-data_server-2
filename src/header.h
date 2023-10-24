@@ -85,7 +85,7 @@ template<typename T>
 class SaveQueue
 {
 private:
-    std::deque<PairQue<T>> totalPairQue_;
+    std::deque<PairQue<SubSaveQueueNodeMsg<T> > > totalPairQue_;
 
     std::vector<std::thread> thVec_;
     std::vector<std::timed_mutex> queLockVec_;
@@ -102,7 +102,7 @@ private:
     void _saveTh(size_t queID)// specified
     {
         std::unique_lock<std::timed_mutex> locker(this->queLockVec_[queID], std::defer_lock);
-        PairQue<T>* PairQuePtr = &this->totalPairQue_[queID];
+        PairQue<SubSaveQueueNodeMsg<T> >* PairQuePtr = &this->totalPairQue_[queID];
         bool emptyF = true;
         while (!(this->exitF_ && emptyF))
         {
@@ -143,7 +143,7 @@ public:
         this->interval_ms_ = scanInterval_ms;
         
         this->queLockVec_ = std::vector<std::timed_mutex>(thNum);
-        this->totalPairQue_ = std::deque<PairQue<T>>(thNum);
+        this->totalPairQue_ = std::deque<PairQue<SubSaveQueueNodeMsg<T> > >(thNum);
 
         for (size_t i = 0; i < thNum; i++)
             this->thVec_.emplace_back(&SaveQueue::_saveTh, this, i);
@@ -156,12 +156,12 @@ public:
             this->thVec_[i].join();
     }
 
-    void push(const std::string& fileName, const T& element)
+    void push(const SubSaveQueueNodeMsg<T>& element)
     {
         auto id = _getSaveQueID();
         std::unique_lock<std::timed_mutex> locker(this->queLockVec_[id], std::defer_lock);
         locker.lock();
-        this->totalPairQue_[id].emplace_back(fileName, element);
+        this->totalPairQue_[id].emplace_back(element.record_filename, element);
         locker.unlock();
     }
 
@@ -185,7 +185,7 @@ public:
             std::unique_lock<std::timed_mutex> locker(this->queLockVec_[i], std::defer_lock);
             locker.lock();
             //this->totalPairQue_[i].shrink_to_fit();
-            PairQue<T>(this->totalPairQue_[i]).swap(this->totalPairQue_[i]);
+            PairQue<SubSaveQueueNodeMsg<T> >(this->totalPairQue_[i]).swap(this->totalPairQue_[i]);
             locker.unlock();
         }
     }
@@ -194,10 +194,10 @@ public:
 };
 
 template<>
-void SaveQueue<cv::Mat>::_saveTh(size_t queID)// cv::Mat specified TODO: to be validation
+void SaveQueue<ImageMsg>::_saveTh(size_t queID)
 {
     std::unique_lock<std::timed_mutex> locker(this->queLockVec_[queID], std::defer_lock);
-    PairQue<cv::Mat>* PairQuePtr = &this->totalPairQue_[queID];
+    PairQue<SubSaveQueueNodeMsg<ImageMsg> >* PairQuePtr = &this->totalPairQue_[queID];
     bool emptyF = true;
     std::string fileName;
     cv::Mat element;
@@ -212,9 +212,9 @@ void SaveQueue<cv::Mat>::_saveTh(size_t queID)// cv::Mat specified TODO: to be v
                 std::this_thread::sleep_for(std::chrono::milliseconds(this->interval_ms_));
                 continue;
             }
-            const std::pair<std::string, cv::Mat>& item = PairQuePtr->front();
+            const std::pair<std::string, SubSaveQueueNodeMsg<ImageMsg> >& item = PairQuePtr->front();
             fileName = item.first;
-            element = item.second.clone();
+            element = item.second.msg.mat.clone();
             PairQuePtr->pop_front();
             emptyF = false;
             locker.unlock();
@@ -224,8 +224,6 @@ void SaveQueue<cv::Mat>::_saveTh(size_t queID)// cv::Mat specified TODO: to be v
             std::this_thread::sleep_for(std::chrono::milliseconds(this->interval_ms_));
     }
 }
-
-
 
 
 
@@ -243,11 +241,10 @@ public:
     BaseSubNode(std::string nodeName, std::string qosServiceName, std::string qosDirPath) : 
         vehicle_interfaces::PseudoTimeSyncNode(nodeName), 
         vehicle_interfaces::QoSUpdateNode(nodeName, qosServiceName, qosDirPath), 
-        rclcpp::Node(nodeName), 
-        initF_(false), 
-        storeF_(true)
+        rclcpp::Node(nodeName)
     {
-
+        this->initF_ = false;
+        this->storeF_ = false;
     }
 
     void setInitF(bool flag) { this->initF_ = flag; }
@@ -309,14 +306,12 @@ private:
         if (!this->getStoreFlag())
             return;
 
-        RecordMsg recordMsg;
-        recordMsg.record_stamp_type = this->getTimestampType();
-        recordMsg.record_stamp = this->getTimestamp().seconds();
-        recordMsg.record_stamp_offset = static_cast<int64_t>(this->getCorrectDuration().nanoseconds());
-        recordMsg.record_frame_id = this->subFrameID_++;
-        this->dataFilledPtr_->setRecordMsg(recordMsg);
-
-        this->_msgProc(msg, this->dataFilledPtr_);
+        RecordMsg baseMsg;
+        baseMsg.record_stamp_type = this->getTimestampType();
+        baseMsg.record_stamp = this->getTimestamp().seconds();
+        baseMsg.record_stamp_offset = static_cast<int64_t>(this->getCorrectDuration().nanoseconds());
+        baseMsg.record_frame_id = this->subFrameID_++;
+        this->dataFilledPtr_->setBaseSubNodeMsg(baseMsg);
 
         std::lock_guard<std::mutex> locker(this->dataPtrLock_);
         std::swap(this->dataFilledPtr_, this->dataGetPtr_);
@@ -369,48 +364,6 @@ public:
             return true;
 
         msgQue.push_back(std::make_shared<SubNodeMsg<U> >(*this->dataGetPtr_));
-
-        if (ret && this->topicInfo_.interface.msgType == "Image")// Tmp solution for Image msg
-        {
-            if (SubNodeMsg<ImageMsg>* imgMsg = dynamic_cast<SubNodeMsg<ImageMsg>*>(this->dataGetPtr_))
-            {
-                imgMsg->msg.mat = cv::Mat::zeros(imgMsg->msg.mat.size(), imgMsg->msg.mat.type());
-            }
-        }
-        return true;
-    }
-};
-
-template<typename T, typename U, typename V>
-class SubSaveQueueNode : public SubNode<T, U>
-{
-private:
-    SaveQueue<T>* saveImgQue_;
-
-public:
-    SubSaveQueueNode<T, U, V>(std::string nodeName, TopicInfo topicInfo, SaveQueue<V>* saveQue, std::string qosServiceName, std::string qosDirPath) : 
-        SubNode<T, U>(nodeName, topicInfo, qosServiceName, qosDirPath), 
-        rclcpp::Node(nodeName)
-    {
-        this->saveImgQue_ = saveQue;
-    }
-
-    bool getData(std::deque<std::shared_ptr<BaseSubNodeMsg> >& msgQue, bool& newData, bool force) override
-    {
-        std::lock_guard<std::mutex> locker(this->dataPtrLock_);
-
-        bool ret = this->newDataF_;
-        newData = this->newDataF_;
-
-        this->newDataF_ = false;
-        this->subFrameID_ = 0;
-
-        if (!this->dataAvailableF_)
-            return false;
-        if (!ret && !force)
-            return true;
-
-        msgQue.push_back(std::make_shared<SubNodeMsg<U> >(*this->dataGetPtr_));
         return true;
     }
 };
@@ -437,47 +390,6 @@ template<>
 void SubNode<vehicle_interfaces::msg::IDTable, vehicle_interfaces::msg::IDTable>::_msgProc(const std::shared_ptr<vehicle_interfaces::msg::IDTable> msg, SubNodeMsg<vehicle_interfaces::msg::IDTable>* ptr)
 {
     ptr->msg = *msg;
-}
-
-template<>
-void SubNode<vehicle_interfaces::msg::Image, ImageMsg>::_msgProc(const std::shared_ptr<vehicle_interfaces::msg::Image> msg, SubNodeMsg<ImageMsg>* ptr)
-{
-    cv::Mat recvMat(100, 100, CV_8UC3, cv::Scalar(50));
-    if (msg->format_type == vehicle_interfaces::msg::Image::FORMAT_JPEG)
-    {
-        recvMat = cv::imdecode(msg->data, 1);
-        cv::cvtColor(recvMat, recvMat, cv::COLOR_BGRA2BGR);
-    }
-    else if (msg->format_type == vehicle_interfaces::msg::Image::FORMAT_RAW && msg->cvmat_type == CV_32FC1)
-    {
-        float *depths = reinterpret_cast<float *>(&msg->data[0]);
-        recvMat = cv::Mat(msg->height, msg->width, CV_32FC1, depths);
-    }
-    else
-        return;
-
-    std::unique_lock<std::mutex> nodeLocker(this->nodeLock_, std::defer_lock);
-    nodeLocker.lock();
-    auto nodeName = this->nodeName_;
-    nodeLocker.unlock();
-
-    std::string record_filename;
-    auto ts = static_cast<rclcpp::Time>(msg->header.stamp).seconds();
-    if (msg->format_type == vehicle_interfaces::msg::Image::FORMAT_JPEG)
-        record_filename = nodeName + "/" + std::to_string(ts) + ".jpg";
-    else if (msg->format_type == vehicle_interfaces::msg::Image::FORMAT_RAW)
-        record_filename = nodeName + "/" + std::to_string(ts) + ".tiff";
-
-    ImageMsg imgMsg;
-    imgMsg.header = msg->header;
-    imgMsg.format_type = msg->format_type;
-    imgMsg.cvmat_type = msg->cvmat_type;
-    imgMsg.depth_unit_type = msg->depth_unit_type;
-    imgMsg.width = msg->width;
-    imgMsg.height = msg->height;
-    imgMsg.record_filename = record_filename;
-    imgMsg.mat = recvMat.clone();
-    ptr->msg = imgMsg;
 }
 
 template<>
@@ -521,6 +433,173 @@ void SubNode<vehicle_interfaces::msg::WheelState, vehicle_interfaces::msg::Wheel
 {
     ptr->msg = *msg;
 }
+
+
+
+template<typename T, typename U>
+class SubSaveQueueNode : public BaseSubNode
+{
+private:
+    std::string nodeName_;
+    TopicInfo topicInfo_;
+    std::shared_ptr<rclcpp::Subscription<T> > subscription_;
+    std::mutex nodeLock_;
+
+    std::atomic<uint64_t> subFrameID_;
+
+    SubSaveQueueNodeMsg<U> data_;
+    SubSaveQueueNodeMsg<U> dataBk_;
+    SubSaveQueueNodeMsg<U>* dataFilledPtr_;
+    SubSaveQueueNodeMsg<U>* dataGetPtr_;
+    std::atomic<bool> newDataF_;
+    std::mutex dataPtrLock_;
+    std::atomic<bool> dataAvailableF_;
+
+    fs::path dumpDir_;
+    SaveQueue<U>* saveQueue_;
+
+private:
+    void _qosCallback(std::map<std::string, rclcpp::QoS*> qmap)
+    {
+        std::unique_lock<std::mutex> nodeLocker(this->nodeLock_, std::defer_lock);
+
+        nodeLocker.lock();
+        auto topicName = this->topicInfo_.topicName;
+        nodeLocker.unlock();
+
+        for (const auto& [k, v] : qmap)
+        {
+            if (k == topicName || k == (std::string)this->get_namespace() + "/" + topicName)
+            {
+                nodeLocker.lock();
+                this->subscription_.reset();
+                this->subscription_ = this->create_subscription<T>(topicName, 
+                    *v, std::bind(&SubSaveQueueNode::_topicCallback, this, std::placeholders::_1));
+                nodeLocker.unlock();
+            }
+        }
+    }
+
+    void _topicCallback(const std::shared_ptr<T> msg)
+    {
+        if (!this->getStoreFlag())
+            return;
+
+        RecordMsg baseMsg;
+        baseMsg.record_stamp_type = this->getTimestampType();
+        baseMsg.record_stamp = this->getTimestamp().seconds();
+        baseMsg.record_stamp_offset = static_cast<int64_t>(this->getCorrectDuration().nanoseconds());
+        baseMsg.record_frame_id = this->subFrameID_++;
+        this->dataFilledPtr_->setBaseSubNodeMsg(baseMsg);
+        this->_msgProc(msg, this->dataFilledPtr_);
+
+        std::lock_guard<std::mutex> locker(this->dataPtrLock_);
+        std::swap(this->dataFilledPtr_, this->dataGetPtr_);
+        this->newDataF_ = true;
+
+        if (!this->dataAvailableF_)
+            this->dataAvailableF_ = true;
+    }
+
+    virtual void _msgProc(const std::shared_ptr<T> msg, SubSaveQueueNodeMsg<U>* ptr)
+    {
+        RCLCPP_WARN(this->get_logger(), "[SubSaveQueueNode::_msgProc (%s)] Function not override.", this->nodeName_.c_str());
+    }
+
+public:
+    SubSaveQueueNode<T, U>(std::string nodeName, TopicInfo topicInfo, SaveQueue<U>* saveQueue, fs::path dumpDir, std::string qosServiceName, std::string qosDirPath) : 
+        BaseSubNode(nodeName, qosServiceName, qosDirPath), 
+        rclcpp::Node(nodeName), 
+        dumpDir_(dumpDir)
+    {
+        // Create topic directory under dump directory
+        {
+            char buf[256];
+            sprintf(buf, "mkdir -p %s", (dumpDir / nodeName).generic_string().c_str());
+            const int dir_err = system(buf);
+        }
+
+        this->nodeName_ = nodeName;
+        this->topicInfo_ = topicInfo;
+        this->dataFilledPtr_ = &this->data_;
+        this->dataGetPtr_ = &this->dataBk_;
+
+        this->saveQueue_ = saveQueue;
+
+        this->subFrameID_ = 0;
+
+        this->addQoSCallbackFunc(std::bind(&SubSaveQueueNode::_qosCallback, this, std::placeholders::_1));
+        vehicle_interfaces::QoSPair qpair = this->addQoSTracking(this->topicInfo_.topicName);
+        this->subscription_ = this->create_subscription<T>(this->topicInfo_.topicName, 
+            *qpair.second, std::bind(&SubSaveQueueNode::_topicCallback, this, std::placeholders::_1));
+    }
+
+    bool dataAvailable() { return this->dataAvailableF_; }
+    
+    // Return false if msg data not available. msgQue will not be pushed if msg data not available.
+    // msgQue pushed if newData arrived or force flag set to true.
+    virtual bool getData(std::deque<std::shared_ptr<BaseSubNodeMsg> >& msgQue, bool& newData, bool force) override
+    {
+        std::lock_guard<std::mutex> locker(this->dataPtrLock_);
+
+        bool ret = this->newDataF_;
+        newData = this->newDataF_;
+
+        this->newDataF_ = false;
+        this->subFrameID_ = 0;
+
+        if (!this->dataAvailableF_)
+            return false;
+        if (!ret && !force)
+            return true;
+
+        msgQue.push_back(std::make_shared<SubSaveQueueNodeMsg<U> >(*this->dataGetPtr_));
+        return true;
+    }
+};
+
+template<>
+void SubSaveQueueNode<vehicle_interfaces::msg::Image, ImageMsg>::_msgProc(const std::shared_ptr<vehicle_interfaces::msg::Image> msg, SubSaveQueueNodeMsg<ImageMsg>* ptr)
+{
+    cv::Mat recvMat(100, 100, CV_8UC3, cv::Scalar(50));
+    if (msg->format_type == vehicle_interfaces::msg::Image::FORMAT_JPEG)
+    {
+        recvMat = cv::imdecode(msg->data, 1);
+        cv::cvtColor(recvMat, recvMat, cv::COLOR_BGRA2BGR);
+    }
+    else if (msg->format_type == vehicle_interfaces::msg::Image::FORMAT_RAW && msg->cvmat_type == CV_32FC1)
+    {
+        float *depths = reinterpret_cast<float *>(&msg->data[0]);
+        recvMat = cv::Mat(msg->height, msg->width, CV_32FC1, depths);
+    }
+    else
+        return;
+
+    std::unique_lock<std::mutex> nodeLocker(this->nodeLock_, std::defer_lock);
+    nodeLocker.lock();
+    auto nodeName = this->nodeName_;
+    auto dumpDir = this->dumpDir_;
+    nodeLocker.unlock();
+
+    std::string record_filename;
+    auto ts = static_cast<rclcpp::Time>(msg->header.stamp).seconds();
+    if (msg->format_type == vehicle_interfaces::msg::Image::FORMAT_JPEG)
+        record_filename = dumpDir / (nodeName + "/" + std::to_string(ts) + ".jpg");
+    else if (msg->format_type == vehicle_interfaces::msg::Image::FORMAT_RAW)
+        record_filename = dumpDir / (nodeName + "/" + std::to_string(ts) + ".tiff");
+
+    ptr->msg.header = msg->header;
+    ptr->msg.format_type = msg->format_type;
+    ptr->msg.cvmat_type = msg->cvmat_type;
+    ptr->msg.depth_unit_type = msg->depth_unit_type;
+    ptr->msg.width = msg->width;
+    ptr->msg.height = msg->height;
+    ptr->msg.mat = recvMat.clone();
+    ptr->record_filename = record_filename;
+    this->saveQueue_->push(*ptr);
+    ptr->msg.mat.release();
+}
+
 
 
 /**

@@ -35,18 +35,18 @@ generic_prop:
     id : 0
 
     # Device information service configuration
-    devInfoService : "" # Service name devinfo_0
+    devInfoService : "devinfo_0" # Service name devinfo_0
     devInterface : "eth0" # eth0
     devMultiNode : True # False
 
     # QoS service configuration
-    qosService : "" # Service name qos_0
+    qosService : "qos_0" # Service name qos_0
     qosDirPath : "launch/qos"
 
     # Safety service configuration
     safetyService : "" # Service name safety_0
 
     # Time sync service configuration
-    timesyncService : "" # Service name timesync_0
+    timesyncService : "timesync_0" # Service name timesync_0
     timesyncPeriod_ms : 3000000.0
     timesyncAccuracy_ms : 2.0 # Restrict the duration of sync process time

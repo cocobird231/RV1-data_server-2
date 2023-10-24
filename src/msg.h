@@ -56,8 +56,7 @@ public:
     uint8_t depth_unit_type;
     uint16_t width;
     uint16_t height;
-    std::string record_filename;
-    cv::Mat mat = cv::Mat(100, 100, CV_8UC3, cv::Scalar(50));
+    cv::Mat mat;
 
     ImageMsg& operator=(const ImageMsg& src)
     {
@@ -67,7 +66,6 @@ public:
         this->depth_unit_type = src.depth_unit_type;
         this->width = src.width;
         this->height = src.height;
-        this->record_filename = src.record_filename;
         try
         {
             this->mat = src.mat.clone();
@@ -84,36 +82,36 @@ public:
 
 class BaseSubNodeMsg
 {
-private:
-    RecordMsg recordMsg_;
+public:
+    RecordMsg recordMsg;
 
 public:
     BaseSubNodeMsg() {}
 
     BaseSubNodeMsg(const BaseSubNodeMsg& src)
     {
-        this->recordMsg_ = src.recordMsg_;
+        this->recordMsg = src.recordMsg;
     }
 
     BaseSubNodeMsg& operator=(const BaseSubNodeMsg& src)
     {
-        this->recordMsg_ = src.recordMsg_;
+        this->recordMsg = src.recordMsg;
         return *this;
+    }
+
+    void setBaseSubNodeMsg(const RecordMsg& msg)
+    {
+        this->recordMsg = msg;
     }
 
     virtual nlohmann::json dumpJSON()
     {
         nlohmann::json ret;
-        ret["record_stamp_type"] = this->recordMsg_.record_stamp_type;
-        ret["record_stamp"] = this->recordMsg_.record_stamp;
-        ret["record_stamp_offset"] = this->recordMsg_.record_stamp_offset;
-        ret["record_frame_id"] = this->recordMsg_.record_frame_id;
+        ret["record_stamp_type"] = this->recordMsg.record_stamp_type;
+        ret["record_stamp"] = this->recordMsg.record_stamp;
+        ret["record_stamp_offset"] = this->recordMsg.record_stamp_offset;
+        ret["record_frame_id"] = this->recordMsg.record_frame_id;
         return ret;
-    }
-
-    void setRecordMsg(const RecordMsg& msg)
-    {
-        this->recordMsg_ = msg;
     }
 };
 
@@ -140,6 +138,11 @@ public:
     {
         this->msg = src.msg;
         return *this;
+    }
+
+    void setSubNodeMsg(const T& msg)
+    {
+        this->msg = msg;
     }
 
     virtual nlohmann::json dumpJSON() override
@@ -316,21 +319,27 @@ void CvtVIHeaderToJSON(vehicle_interfaces::msg::Header header, nlohmann::json& j
 template<typename T>
 class SubSaveQueueNodeMsg : public SubNodeMsg<T>
 {
-private:
+public:
     std::string record_filename;
 
 public:
-    SubSaveQueueNodeMsg<T>() : SubNodeMsg<T>() {}
+    SubSaveQueueNodeMsg() : SubNodeMsg<T>() {}
 
-    SubSaveQueueNodeMsg<T>(const SubSaveQueueNodeMsg<T>& src) : SubNodeMsg<T>(src)
+    SubSaveQueueNodeMsg(const SubSaveQueueNodeMsg& src) : SubNodeMsg<T>(src)
     {
         this->record_filename = src.record_filename;
     }
 
-    SubSaveQueueNodeMsg<T>& operator=(const SubSaveQueueNodeMsg<T>& src)
+    SubSaveQueueNodeMsg& operator=(const SubSaveQueueNodeMsg& src)
     {
         this->record_filename = src.record_filename;
         return *this;
+    }
+
+    void setSubNodeMsg(std::string record_filename, const T& msg)
+    {
+        SubNodeMsg<T>::setSubNodeMsg(msg);
+        this->record_filename = record_filename;
     }
 
     nlohmann::json dumpJSON() override
@@ -338,11 +347,5 @@ public:
         auto ret = SubNodeMsg<T>::dumpJSON();
         ret["record_filename"] = this->record_filename;
         return ret;
-    }
-
-    void setMsg(const T& msg, std::string record_filename)
-    {
-        SubNodeMsg<T>::setMsg(msg);
-        this->record_filename = record_filename;
     }
 };
