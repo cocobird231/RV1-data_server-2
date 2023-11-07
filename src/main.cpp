@@ -247,6 +247,13 @@ private:
         }
     }
 
+    void _timeSyncCallback()
+    {
+        std::lock_guard<std::mutex> locker(this->topicContainerPackLock_);
+        for (auto& [topicName, container] : this->topicContainerPack_)
+            container.node->syncTime(this->getCorrectDuration(), this->getTimestampType());
+    }
+
     void _monitorTimerCallback()
     {
         // Search topics
@@ -317,7 +324,7 @@ private:
                 if (!this->params_->enable_control)
                     container.node->setStoreFlag(true);
 
-                container.node->syncTime(this->getCorrectDuration(), this->getTimestampType());// TODO: Add TimeSyncNode syncCallback()
+                container.node->syncTime(this->getCorrectDuration(), this->getTimestampType());
                 this->execMap_[topicName] = new rclcpp::executors::SingleThreadedExecutor();
                 this->execMap_[topicName]->add_node(container.node);
                 this->subThMap_[topicName] = std::thread(SpinSubNodeExecutor, this->execMap_[topicName], container.node, topicName);
@@ -442,6 +449,9 @@ public:
             sprintf(buf, "rm -rf %s && mkdir -p %s", this->dumpDir_.generic_string().c_str(), (this->dumpDir_ / "json").generic_string().c_str());
             const int dir_err = system(buf);
         }
+
+        // Time sync callback
+        this->addTimeSyncCallbackFunc(std::bind(&RecordNode::_timeSyncCallback, this));
 
         // Init recorder
         this->recorderPtr_ = &this->recorder_;
