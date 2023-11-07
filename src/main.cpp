@@ -1,5 +1,7 @@
 #include "header.h"
 
+// #define LESS_COPY_METHOD
+
 /**
  * Params Class Implementation.
  */
@@ -340,6 +342,7 @@ private:
             if (!container.node->isInit())
                 continue;
 
+#ifndef LESS_COPY_METHOD
             // Non-refined solution. (Copy all data whether new or repetitive)
             bool newDataF = false;
             if (container.node->getData(this->recorderPtr_->msgQue, newDataF, true))
@@ -349,11 +352,12 @@ private:
                 container.msgBuf.first = this->recorderPtr_->msgQue.back();// Add tmp latest msg.
                 container.msgBuf.second = this->recorderPtr_->msgQue.size() - 1;// Add tmp idx.
             }
-/*
+#else
+            // Less copy solution. (TODO: fix data disorder while record ptr switched. Fix random crash while dumping json.)
             if (this->recorderPtr_->msgQue.size() <= 0)// New msgQue or swapped.
             {
                 bool newDataF = false;
-                if (container.node->getData(this->recorderPtr_->msgQue, newDataF, true))
+                if (container.node->getData(this->recorderPtr_->msgQue, newDataF, true))// Force get msg data
                 {
                     // Message data available
                     this->recorderPtr_->recordMap[sampTsStr][topicName] = 0;// recordMap add idx corresponds to msgQue.
@@ -364,35 +368,45 @@ private:
             else// Normal situation
             {
                 bool newDataF = false;
-                if (container.node->getData(this->recorderPtr_->msgQue, newDataF, false))
+                if (container.node->getData(this->recorderPtr_->msgQue, newDataF, false))// msgQue pushed if newDataF
                 {
                     // Message data available
-                    if (newDataF)
+                    if (newDataF)// New msg data arrived
                     {
                         // printf("%s new data\n", topicName.c_str());
                         this->recorderPtr_->recordMap[sampTsStr][topicName] = this->recorderPtr_->msgQue.size() - 1;// recordMap add idx corresponds to msgQue.
                         container.msgBuf.first = this->recorderPtr_->msgQue.back();// Add tmp latest msg.
                         container.msgBuf.second = this->recorderPtr_->msgQue.size() - 1;// Add tmp idx.
+                        RCLCPP_WARN(this->get_logger(), "%s new data! [%ld]", topicName.c_str(), this->recorderPtr_->msgQue.size());
                     }
                     else
                     {
                         // printf("%s count: %d\n", topicName.c_str(), container.msgBuf.first.use_count());
                         if (container.msgBuf.first.use_count() < 2)// msgQue swapped. Copy tmp msg to current msgQue.
                         {
-                            this->recorderPtr_->msgQue.push_back(container.msgBuf.first);
-                            this->recorderPtr_->recordMap[sampTsStr][topicName] = this->recorderPtr_->msgQue.size() - 1;// recordMap add idx corresponds to msgQue.
-                            container.msgBuf.second = this->recorderPtr_->msgQue.size() - 1;
-                            // printf("%s recovered.\n", topicName.c_str());
+                            // this->recorderPtr_->msgQue.push_back(container.msgBuf.first);
+                            // this->recorderPtr_->recordMap[sampTsStr][topicName] = this->recorderPtr_->msgQue.size() - 1;// recordMap add idx corresponds to msgQue.
+                            // container.msgBuf.second = this->recorderPtr_->msgQue.size() - 1;
+                            printf("%s recovered.\n", topicName.c_str());
+
+                            // Grab msg data again while using force
+                            if (container.node->getData(this->recorderPtr_->msgQue, newDataF, true))
+                            {
+                                // Message data available
+                                this->recorderPtr_->recordMap[sampTsStr][topicName] = this->recorderPtr_->msgQue.size() - 1;// recordMap add idx corresponds to msgQue.
+                                container.msgBuf.first = this->recorderPtr_->msgQue.back();// Add tmp latest msg.
+                                container.msgBuf.second = this->recorderPtr_->msgQue.size() - 1;// Add tmp idx.
+                            }
                         }
-                        // else if (container.msgBuf.second >= 0)// msgQue not swap.
-                        // {
-                        //     this->recorderPtr_->recordMap[sampTsStr][topicName] = container.msgBuf.second;// recordMap add idx corresponds to msgQue.
-                        //     // printf("%s linked.\n", topicName.c_str());
-                        // }
+                        else if (container.msgBuf.second >= 0)// msgQue not swap.
+                        {
+                            this->recorderPtr_->recordMap[sampTsStr][topicName] = container.msgBuf.second;// recordMap add idx corresponds to msgQue.
+                            RCLCPP_INFO(this->get_logger(), "%s linked. [%ld]", topicName.c_str(), container.msgBuf.second);
+                        }
                     }
                 }
             }
-*/
+#endif
         }
     }
 

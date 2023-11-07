@@ -312,6 +312,7 @@ private:
         baseMsg.record_stamp_offset = static_cast<int64_t>(this->getCorrectDuration().nanoseconds());
         baseMsg.record_frame_id = this->subFrameID_++;
         this->dataFilledPtr_->setBaseSubNodeMsg(baseMsg);
+        this->_msgProc(msg, this->dataFilledPtr_);
 
         std::lock_guard<std::mutex> locker(this->dataPtrLock_);
         std::swap(this->dataFilledPtr_, this->dataGetPtr_);
@@ -594,7 +595,7 @@ void SubSaveQueueNode<vehicle_interfaces::msg::Image, ImageMsg>::_msgProc(const 
     ptr->msg.depth_unit_type = msg->depth_unit_type;
     ptr->msg.width = msg->width;
     ptr->msg.height = msg->height;
-    ptr->msg.mat = recvMat.clone();
+    ptr->msg.mat = recvMat;// No need to clone.
     ptr->record_filename = record_filename;
     this->saveQueue_->push(*ptr);
     ptr->msg.mat.release();
