@@ -267,6 +267,7 @@ private:
     std::string nodeName_;
     TopicInfo topicInfo_;
     std::shared_ptr<rclcpp::Subscription<T> > subscription_;
+    std::mutex topicLock_;
     std::mutex nodeLock_;
 
     std::atomic<uint64_t> subFrameID_;
@@ -303,6 +304,7 @@ private:
 
     void _topicCallback(const std::shared_ptr<T> msg)
     {
+        std::lock_guard<std::mutex> topicLocker(this->topicLock_);// Restrict callback process only one at the same time.
         if (!this->getStoreFlag())
             return;
 
@@ -444,6 +446,7 @@ private:
     std::string nodeName_;
     TopicInfo topicInfo_;
     std::shared_ptr<rclcpp::Subscription<T> > subscription_;
+    std::mutex topicLock_;
     std::mutex nodeLock_;
 
     std::atomic<uint64_t> subFrameID_;
@@ -483,6 +486,7 @@ private:
 
     void _topicCallback(const std::shared_ptr<T> msg)
     {
+        std::lock_guard<std::mutex> topicLocker(this->topicLock_);// Restrict callback process only one at the same time.
         if (!this->getStoreFlag())
             return;
 
