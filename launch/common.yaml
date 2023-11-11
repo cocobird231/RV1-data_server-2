@@ -1,4 +1,4 @@
-#ver=1.4
+#ver=2.0
 ---
 topic_monitor:
     msg_filter : ["vehicle_interfaces"] # Filter scanned topics according to message type.
@@ -34,6 +34,10 @@ generic_prop:
     # Note: If the topic use to be subscriptions, then the topic name will not be formed.
     id : 0
 
+    # ################################################################################################
+    # The rest of params will not be used. Change the following params under service.json instead.
+    # ################################################################################################
+
     # Device information service configuration
     devInfoService : "devinfo_0" # Service name devinfo_0
     devInterface : "eth0" # eth0
@@ -50,4 +54,4 @@ generic_prop:
     timesyncService : "timesync_0" # Service name timesync_0
     timesyncPeriod_ms : 600000.0 # 10 minute a sync for HPC. 2 minute a sync for sensors.
     timesyncAccuracy_ms : 2.0 # Restrict the duration of sync process time
-    timesyncWaitService : True # Wait until time synced at construction.
+    timesyncWaitService : False # Wait until time synced at construction.
