@@ -251,7 +251,13 @@ private:
     {
         std::lock_guard<std::mutex> locker(this->topicContainerPackLock_);
         for (auto& [topicName, container] : this->topicContainerPack_)
+        {
+            if (!container.occupyF || container.node == nullptr)
+                continue;
+            if (!container.node->isInit())
+                continue;
             container.node->syncTime(this->getCorrectDuration(), this->getTimestampType());
+        }
     }
 
     void _monitorTimerCallback()
@@ -342,7 +348,7 @@ private:
         std::lock_guard<std::mutex> recorderPtrLocker(this->recorderPtrLock_);
 
         std::string sampTsStr = std::to_string(this->getTimestamp().seconds());
-        for (auto& [topicName, container] : topicContainerPack_)
+        for (auto& [topicName, container] : this->topicContainerPack_)
         {
             if (!container.occupyF || container.node == nullptr)
                 continue;
