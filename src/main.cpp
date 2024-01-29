@@ -326,7 +326,7 @@ private:
                     container.node = std::make_shared<SubNode<vehicle_interfaces::msg::WheelState, vehicle_interfaces::msg::WheelState> >(subNodeName, container.info, this->params_->qosService, this->params_->qosDirPath);
                 else
                     continue;
-                
+
                 if (!this->params_->enable_control)
                     container.node->setStoreFlag(true);
 
@@ -334,7 +334,7 @@ private:
                 this->execMap_[topicName] = new rclcpp::executors::SingleThreadedExecutor();
                 this->execMap_[topicName]->add_node(container.node);
                 this->subThMap_[topicName] = std::thread(SpinSubNodeExecutor, this->execMap_[topicName], container.node, topicName);
-                
+
                 RCLCPP_INFO(this->get_logger(), "[Scan] Subscribed [%s][%s]", topicName.c_str(), container.info.interface.msgType.c_str());
                 container.occupyF = true;
             }
@@ -537,7 +537,7 @@ public:
                     continue;
                 recordJSON[sampTs][topicName] = this->dumpPtr_->msgQue[idx]->dumpJSON();
             }
-                
+
         }
         std::ofstream outFile(this->dumpDir_ / "json" / (std::to_string(dumpTs) + ".json"));
         outFile << recordJSON << std::endl;
